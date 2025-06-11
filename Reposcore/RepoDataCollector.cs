@@ -208,6 +208,7 @@ public class RepoDataCollector
             int unmergedPr = 0;
             int openIssue = 0;
             int closedIssue = 0;
+            int count = 0;
 
             // allIssuesAndPRs의 데이터를 유저,라벨별로 분류
             foreach (var item in allIssuesAndPRs)
@@ -271,6 +272,25 @@ public class RepoDataCollector
                             else if (DocsLabels.Contains(labelName))
                                 activity.IS_doc++;
                         }
+                    }
+                }
+
+                count++;
+
+                // 20개마다 API 한도 정보 출력
+                if (_showApiLimit && count % 20 == 0)
+                {
+                    try
+                    {
+                        var rate = _client?.RateLimit.GetRateLimits().Result.Rate;
+                        if (rate != null)
+                        {
+                            Console.WriteLine($"📡 [RateLimit] Remaining={rate.Remaining}, Reset={rate.Reset.LocalDateTime}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"⚠️ RateLimit 정보 조회 실패: {ex.Message}");
                     }
                 }
             }
