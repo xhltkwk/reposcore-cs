@@ -22,6 +22,7 @@ public class RepoDataCollector
     private static GitHubClient? _client; // GitHub API 요청에 사용할 클라이언트입니다.
     private readonly string _owner; // 분석 대상 저장소의 owner (예: oss2025hnu)
     private readonly string _repo; // 분석 대상 저장소의 이름 (예: reposcore-cs)
+    private readonly bool _showApiLimit; // API 한도(RateLimit) 정보를 출력할지 여부
 
     //수정에 용이하도록 수집데이터종류 전역변수화
     private static readonly string[] FeatureLabels = { "bug", "enhancement" };
@@ -32,10 +33,11 @@ public class RepoDataCollector
         new RepoStateSummary(0, 0, 0, 0);
 
     // 생성자에는 저장소 하나의 정보를 넘김
-    public RepoDataCollector(string owner, string repo)
+    public RepoDataCollector(string owner, string repo, bool showApiLimit = false)
     {
         _owner = owner;
         _repo = repo;
+        _showApiLimit = showApiLimit;
     }
 
     // GitHubClient 초기화 메소드
@@ -226,19 +228,27 @@ public class RepoDataCollector
 
                 if (item.PullRequest != null) // PR일 경우
                 {
-                    if (item.PullRequest.Merged)
+                    try
                     {
-                        mergedPr++;
-                        if (FeatureLabels.Contains(labelName))
-                            activity.PR_fb++;
-                        else if (DocsLabels.Contains(labelName))
-                            activity.PR_doc++;
-                        else if (labelName == TypoLabel)
-                            activity.PR_typo++;
+                        var pr = _client.PullRequest.Get(_owner, _repo, item.Number).Result;
+                        if (pr.Merged == true)
+                        {
+                            mergedPr++;
+                            if (FeatureLabels.Contains(labelName))
+                                activity.PR_fb++;
+                            else if (DocsLabels.Contains(labelName))
+                                activity.PR_doc++;
+                            else if (labelName == TypoLabel)
+                                activity.PR_typo++;
+                        }
+                        else
+                        {
+                            unmergedPr++;
+                        }
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        unmergedPr++;
+                        Console.WriteLine($"❗ PR #{item.Number} 정보를 가져오는 중 오류 발생: {ex.Message}");
                     }
                 }
                 else
@@ -254,7 +264,7 @@ public class RepoDataCollector
                     else if (item.State.Value.ToString() == "Closed")
                     {
                         closedIssue++;
-                        if (item.StateReason.ToString() == "completed")
+                        if (item.StateReason?.ToString() == "completed")
                         {
                             if (FeatureLabels.Contains(labelName))
                                 activity.IS_fb++;
@@ -305,12 +315,12 @@ public class RepoDataCollector
         }
         catch (AuthorizationException)
         {
-            Console.WriteLine("❗[{_owner}/{_repo}] 인증 실패: 올바른 토큰을 사용했는지 확인하세요.");
+            Console.WriteLine($"❗[{_owner}/{_repo}] 인증 실패: 올바른 토큰을 사용했는지 확인하세요.");
             Environment.Exit(1);
         }
         catch (NotFoundException)
         {
-            Console.WriteLine("❗[{_owner}/{_repo}] 저장소를 찾을 수 없습니다. owner/repo 이름을 확인하세요.");
+            Console.WriteLine($"❗[{_owner}/{_repo}] 저장소를 찾을 수 없습니다. owner/repo 이름을 확인하세요.");
             Environment.Exit(1);
         }
         catch (Exception ex)
